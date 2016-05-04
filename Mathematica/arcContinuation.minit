@@ -1,0 +1,15 @@
+init <* rt0 *>
+end <*rtend  *>
+dim <* Length[vars0] *>
+
+<* ColumnForm[vars0] *>
+
+<* ColumnForm[betas0] *>
+
+action <* action0 *>
+ 
+num_double_params <* Length[rpars0] *>
+<* ColumnForm[rpars0]  *>
+
+num_int_params <* Length[ipars0] *>
+<* ColumnForm[ipars0]  *>
