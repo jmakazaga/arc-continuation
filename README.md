@@ -1,11 +1,12 @@
 # arc-continuation
 Given n-1 equations f_1(x), ... f_{n-1}(x), where x \in R^n (yes, x has 1 more element than number of equations) and 
 given x_0 for which f_i(x_0) = 0, there is a continuous curve for x values for which f_i(x) = 0. 
-We will move in this curve starting at x_0. This movement can be in two directions, we define an horthogonal 
-hiperplane of the form
+To move on the curve we use continuation mehods based on Newton Iterations that requires not only the functions but also the jacobian of the functions.
+The function and its jacobian must be provided in a file in C code (or at least as objcet file) and the object file must be linked to the main process.
+We will move in this curve starting at x_0. This movement can be made in two directions, we define an orthogonal hyperplane of the form
 b(x-x_0) = s -s_0, 
 where b,x,x_0 \in R^n and s,s_0 \in R. 
-So that the vector b is hortoghonal to the curve.
+So that the vector b is horthogonal to the curve.
 With b we are able to move on the curve for which f_i(x) = 0 and we will get different values of x. 
 While we are moving on the curve we can evaluate some f_n(x) and we can do several things with this value:
 a.- we can return the x that has minimum value for f_n(x) in the covered path.
@@ -30,7 +31,7 @@ If action was 1 (go from s_0 to s_1 and give me the point that makes f_n(x) mini
     .- info = 11, we arrived to s_1 and the minimum is a point in the midle of the path. return values: x_e = x_min for which f_n(x_min) is the minimum. s_a  = s_0, s_e = s_min, b_e = b_min
     .- info = 12, we arrived to s_1 and the minimum is at the last point. Return values are same as info = 10.
     ---
-    .- info = 20. The curve is closed and the minimun is for the starting point. returns x_e = x_0, s_a = s_0, s_e = period of the curve, b_e = b_0 but ortoghonal.
+    .- info = 20. The curve is closed and the minimun is for the starting point. returns x_e = x_0, s_a = s_0, s_e = period of the curve, b_e = b_0 but orthogonal.
     .- info = 21. The curve is closed and the minimun has been reached at s_min. return values x_e = x_min, s_a = s_min, s_b = period of the curve, b_e = b_min
     ---
     .- info = -20. It was not posible to move on the curve. return values are x_0, b_0, s_a=s_0, s_b = s_0
