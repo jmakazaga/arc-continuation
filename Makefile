@@ -36,7 +36,7 @@ all : $(BINARIES)
 
 
 mathArcContinuation : ${MHDIR}/mathArcContinuationtm.o ${MHDIR}/mathArcContinuation.o ${MHDIR}/arc-continuation.o user_fcns.o
-	${CC} ${EXTRA_CFLAGS} -I${INCDIR} -L${MLINKDIR}  ${MHDIR}/arc-continuation.o ${MHDIR}/mathArcContinuationtm.o user_fcns.o  -l${MLLIB} -lm -luuid -lpthread -lrt -lstdc++ -lm -llapack -o $@
+	${CC} ${EXTRA_CFLAGS} -I${INCDIR} -L${MLINKDIR} ${MHDIR}/mathArcContinuation.o ${MHDIR}/arc-continuation.o ${MHDIR}/mathArcContinuationtm.o user_fcns.o  -l${MLLIB} -lm -luuid -lpthread -lrt -lstdc++ -lm -llapack -o $@
 
 
 terminalArcContinuation: ${MHDIR}/terminalArcContinuation.o ${MHDIR}/arc-continuation.o user_fcns.o
@@ -48,7 +48,7 @@ ${MHDIR}/terminalArcContinuation.o: ${MHDIR}/terminalArcContinuation.c
 
 
 ${MHDIR}/mathArcContinuation.o: ${MHDIR}/mathArcContinuation.c 
-	${CC} -c -I${INCDIR}   ${MHDIR}/terminalArcContinuation.c -o $@
+	${CC} -c -I${INCDIR}   ${MHDIR}/mathArcContinuation.c -o $@
 
 
 ${MHDIR}/arc-continuation.o : ${MHDIR}/arc-continuation.c

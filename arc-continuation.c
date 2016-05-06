@@ -5,14 +5,8 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <arcContinuation.h>
 
-
-#ifdef MATLAB
-  #include <mex.h>
-  typedef ptrdiff_t lapack_type;
-#else
-  typedef int lapack_type;
-#endif
 
 #ifdef SOLVER_GSL
   #include <gsl/gsl_linalg.h>
@@ -21,62 +15,6 @@
 #ifdef LOGFILE
 FILE *loga;
 #endif
-
-typedef double val_type;
-typedef double time_type;
-
-typedef struct vallistelem
-    {
-    val_type *val;
-    val_type *dval;
-    double dnorma;
-    struct vallistelem *sig;
-    } vallistelem;
-
-typedef struct
-    {
-    vallistelem * first;
-    int num;
-    }vallist;
-
-typedef struct
-    {
-    int maxnewtoniter;
-    int maxinnersteps;
-    int maxstepattempts; /* this value depends on maxinnersteps, but at first steps it is a higher value */
-    int prec;       // when Newton-method does not get the accuracy required in maxstepnumber iterations
-                // we see if the norm of the increment is less than pow(10,prec) in which case 
-                // we accept the solution as new root 
-    int acc;
-    int iter_opt;   // optimun number of iterations in the newton method aplication. 
-		// The deltaT will be adecuated depending in this value. The goal is to get the deltaT 
-		// that produces convergence in iter_opt iterations.
-    int maxnumstepswithsamejac;         // 1 --> the same jacobian will be used in next step (2 steps with same jacobian)
-				    // 2--> it will try to use two more times the same jacobian
-                                    // 0 --> allways will get the new jacobian
-    int numstepswithsamejac;  // var to be modified at each Newton iteration step
-    int maxdeltacondfails;
-    int approxjacobian;
-    double stepsize;  // The user can set the initial stepsize. Starting from t0 the process goes to t1
-		  // and the initial stepsize can be set in the .conf file
-/*
-# the mecanism to control the minimun stepsize:
-#    If the average_stepsize goes beyond min_av_stepsize the process will stop.
-#    average_stepsize = \Sum_i^s stepsize_{-i}/s
-#    where s is the number of steps taken into account for the estimation. (if s == 1 then 
-#    the stepsize can not be beyond min_av_stepsize) s can be set in the configuration file:
-#          num_steps_for_stepsize_control: is the number of steps taken into account to get the
-#                average_stepsize
-#          min_av_stepsize: The minimun average_stepsize acepted. Format #.#e#
-*/
-    double min_av_stepsize;
-    int num_steps_for_stepsize_control;
-    int extra_eqs;
-    double iterationdecreasefactor; // the factor indicating the minimum decrease of the delta at each Newton iteration (0.8)
-    int max_steps;  // the maximum number of steps to be needed to avance from tinit until tend (400) 
-    double closure_tolerance;
-    } option_struct;
-
 
     
 double Norm(int dim, val_type *v);
@@ -442,7 +380,6 @@ for (i=0; (i<dim) && !res; i++)
 return(res);
 }
 
-static int numjac=0;
 
 void irauli(int d, val_type *m)
 {
@@ -528,7 +465,7 @@ if ((newbal = (val_type *)malloc (dim*sizeof(val_type))) == NULL)   // Vector di
         {
 	perror("error allocating memory for v2 of newton iteration");
         #ifdef LOGFILE
-        fprintf(loga,"COMPUTING %d JACOBIAN.............\n",numjac);
+        fprintf(loga,"COMPUTING %d JACOBIAN.............\n",optr->numjac);
         #endif
         return(4);
         }
@@ -567,10 +504,10 @@ b = gsl_vector_view_array (delta, dim);
 #endif
 if (optr->maxnumstepswithsamejac == optr->numstepswithsamejac)
   {
-  numjac ++;
+  optr->numjac ++;
   optr->numstepswithsamejac = 0;
   #ifdef LOGFILE
-  fprintf(loga,"COMPUTING %d JACOBIAN.............\n",numjac);
+  fprintf(loga,"COMPUTING %d JACOBIAN.............\n",optr->numjac);
   #endif
   if (ba != (double *)0) // the jacobian has as last row derivatives of the equation of the hiperplane (and we change the values by hand)
       i = get_advancingjacobian(dim, bal0, xa, ba, t, ta, jac0, preal, numpreal, pint, numpint,optr);
@@ -715,7 +652,7 @@ while ( (nanfound == 0) &&
 if (nanfound != 0) fprintf(loga,"end of the newton iterations because NaN on solving equationd by lapack\n");
 if (info != 0) fprintf(loga,"end of the newton iterations by info != 0\n");
 if (deltacond == 0) fprintf (loga,"end newton iterations because difference between approximations do not decrease after %d iterations\n",iters);
-if (iters >= maxnewtoniters) fprintf (loga,"end newton iterations by cause 4 (too many iterations...)\n");
+if (iters >= optr->maxnewtoniter) fprintf (loga,"end newton iterations by cause 4 (too many iterations...)\n");
 #endif
  if ((info == 0) && (nanfound ==0)&& ((acccond == 0) || (normdelta < pow(10.0,-optr->prec))) )
     {
@@ -889,7 +826,7 @@ int *num_steps_for_stepsize_controlptr */
 char word[81];
 FILE *fitx;
 struct stat stata;
-int i;
+int i,res;
 char filename[30]; /* length of "./arcContinuation.conf" is 20 + end of string = 21 */
 
 strcpy(filename,"./arcContinuation.conf");
@@ -906,47 +843,47 @@ if (stat(filename,&stata) == 0)
     	if (i == 1)  /* it has read the word */
       	   {
            if ((word[0] == '\0') || (word[0] == '#'))
-           		fscanf(fitx,"%*[^\n]\n"); /* comment line */
+           		res=fscanf(fitx,"%*[^\n]\n"); /* comment line */
             else 
                {
                if (strcmp(word,"Newton")==0) 	//Newton iteration #
                  {
-                 fscanf(fitx,"%d%*[^\n]\n",&(optr->maxnewtoniter));
+                 res=fscanf(fitx,"%d%*[^\n]\n",&(optr->maxnewtoniter));
                  }
                 else
               	 {
 	       	 if (strcmp(word,"Inner")==0)
-		       	fscanf(fitx,"%d%*[^\n]\n",&(optr->maxinnersteps)); 
+		       	res=fscanf(fitx,"%d%*[^\n]\n",&(optr->maxinnersteps)); 
 		  else
 		   {
 		   if (strcmp(word,"prec")==0)
-		      fscanf(fitx,"%d%*[^\n]\n",&(optr->prec)); 
+		      res=fscanf(fitx,"%d%*[^\n]\n",&(optr->prec)); 
 	            else
 	              if (strcmp(word,"acc")==0)
-		         fscanf(fitx,"%d%*[^\n]\n",&(optr->acc));
+		         res=fscanf(fitx,"%d%*[^\n]\n",&(optr->acc));
 		      else
                         if (strcmp(word,"iter_opt")==0) 
-			  fscanf(fitx,"%d%*[^\n]\n",&(optr->iter_opt));
+			  res=fscanf(fitx,"%d%*[^\n]\n",&(optr->iter_opt));
 		        else
                           if (strcmp(word,"maxnumstepswithsamejac")==0) 
-			    fscanf(fitx,"%d%*[^\n]\n",&(optr->maxnumstepswithsamejac));
+			    res=fscanf(fitx,"%d%*[^\n]\n",&(optr->maxnumstepswithsamejac));
 		           else
                             if (strcmp(word,"maxdeltacondfails")==0) 
-			      fscanf(fitx,"%d%*[^\n]\n",&(optr->maxdeltacondfails));
+			      res=fscanf(fitx,"%d%*[^\n]\n",&(optr->maxdeltacondfails));
 			     else
                               if (strcmp(word,"approxjacobian")==0) 
 				  optr->approxjacobian = 1;
 				else
                                   if (strcmp(word,"stepsize")==0) 
-					fscanf(fitx,"%lf%*[^\n]\n",&(optr->stepsize));
+					res=fscanf(fitx,"%lf%*[^\n]\n",&(optr->stepsize));
 				    else
 				      if (strcmp(word,"min_av_stepsize")==0)
-					  fscanf(fitx,"%lg%*[^\n]\n",&(optr->min_av_stepsize));
+					  res=fscanf(fitx,"%lg%*[^\n]\n",&(optr->min_av_stepsize));
 				        else
 					  if (strcmp(word,"num_steps_for_stepsize_control")==0)
-					      fscanf(fitx,"%d%*[^\n]\n",&(optr->num_steps_for_stepsize_control));
+					      res=fscanf(fitx,"%d%*[^\n]\n",&(optr->num_steps_for_stepsize_control));
 					    else
-					      fscanf(fitx,"%*[^\n]\n"); /* nothing of interest in the line, so read until EOL */
+					      res=fscanf(fitx,"%*[^\n]\n"); /* nothing of interest in the line, so read until EOL */
 	            } // else Inner
            	 } // else Newton
                } //else  not comment
@@ -1092,6 +1029,7 @@ opt_vals.maxnumstepswithsamejac=0; // 0 -> the jacobian is computed for every ne
 opt_vals.stepsize=0;
 opt_vals.min_av_stepsize = 1.0e-10;
 opt_vals.num_steps_for_stepsize_control = 1;
+opt_vals.numjac = 0;
 opt_vals.iterationdecreasefactor = 0.8;
 opt_vals.max_steps =400;
 opt_vals.closure_tolerance = 1.0e-5;        //???????????????
@@ -1412,7 +1350,7 @@ switch (action) // depending on the action we have to do different things
 	            {
 	            fprintf(loga, "Warning: Last root with problems!!!!!\n");
 	            }
-	        fprintf(loga,"number of jacobian computations = %d\n",numjac);
+	        fprintf(loga,"number of jacobian computations = %d\n",opt_vals.numjac);
 	        #endif
 		if (is_closed) *infoptr = 2; //We have returned to the init root.
 		    else  if (nstep >= 10*opt_vals.max_steps) // We have stoped because max_steps was reached, not because t = tend. 
@@ -1542,7 +1480,7 @@ switch (action) // depending on the action we have to do different things
 		vectorcp(dim,var1, &(var0[0]));
 		opt_vals.acc=opt_vals.acc*4;
         	opt_vals.numstepswithsamejac= opt_vals.maxnumstepswithsamejac;
-		// we will try to get the root of the dim equatians, without the hiperplane equation as last eqution.
+		// we will try to get the root of the dim equations, without the hiperplane equation as last eqution.
 		// to do it we call to findroot with parameters 0 as the pointers to the vector of previous values
         	rootfound = findrootbysnewton(dim, jac0,ipiv,troot, var0, &(var1[0]),&(res0[0]),&fn, (double *)0, (double *)0, ta, preal,numpreal,pint,numpint, &auxfactor,&opt_vals);
         	opt_vals.acc=opt_vals.acc/4.;
