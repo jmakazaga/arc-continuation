@@ -1,4 +1,4 @@
-#include <homotopia.h>
+#include <arcContinuation.h>
 #include <stdlib.h>
 #include <ctype.h>
 #include <math.h>

@@ -9,7 +9,7 @@ ArcContinuationDir, AuxiliaryRules,OSType,RealJacobian,RealRest,RealFindRoot];
 
 
 Options[SetArcContinuation] = 
-{AuxiliaryRules->{}, ArcContinuationDir->"~/ik/homotopia_double",
+{AuxiliaryRules->{}, ArcContinuationDir->"~/ik/github/arc-continuation",
                TargetDir->Automatic, OSType->"Linux", RealParameters->{}, IntegerParameters->{},
                HomogeneousVariables->False};
 
@@ -63,24 +63,24 @@ simplrulesfcn[{rules0_,rules1_}]:=
      {Join[rules0,rules00],Complement[rules1,rules00]/. rules00}
            ];
 
-(*Print["DDrules definitzera goaz. Length[auxvars]*Length[vars]=",Length[auxvars]*Length[vars]];
+Print["DDrules definitzera goaz. Length[auxvars]*Length[vars]=",Length[auxvars]*Length[vars]];
 Print["Orain arteko denbora=",SessionTime[]-denbora];
-denbora = SessionTime[];*)
+denbora = SessionTime[];
 
 DDrulesall=Flatten[Outer[DDrule,auxvars,vars]];
 
-(*Print["DDrulesall definitu degu"];
+Print["DDrulesall definitu degu"];
 Print["Tarte honetako denbora=",SessionTime[]-denbora];
-denbora = SessionTime[];*)
+denbora = SessionTime[];
 
 
 (*{DDrules0,DDrules}=FixedPoint[simplrulesfcn,{{},DDrulesall}];*)
 DDrules = DDrulesall;
 DDrules0 ={};
 
-(*Print["DDrules definitu degu"];
+Print["DDrules definitu degu"];
 Print["Tarte honetako denbora=",SessionTime[]-denbora];
-denbora = SessionTime[];*)
+denbora = SessionTime[];
 
 dauxvars = Map[First,DDrules];
 parsrules = Thread[pars->Array[HoldForm[preal[[#]]]&,Length[pars],0]];

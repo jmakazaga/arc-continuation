@@ -1365,8 +1365,10 @@ switch (action) // depending on the action we have to do different things
 	    {
 	    vectorcp(dim, var0, var1);
 	    *infoptr = -2;
-	    }
-	return_values(dim,var1,b1,t0,t1,preal,numpreal,pint,numpint);
+	    } 
+	/* output  double *var1, double *b1, double *taptr, double *tbptr, int * infoptr */
+	*taptr = t0;
+	*tbptr = t1;
 	break;
     case 1: 
 	if (lastwasmin) // we have to save the minimum, the previous and the next to get the minimum by polynomial interpolation

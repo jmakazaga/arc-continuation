@@ -1,6 +1,26 @@
+#include <stdlib.h>
+#include <math.h>
+#define LAPACKDOUBLE
+//#define PRINTNEWROOT
+#define Pi M_PI
+#define LOGFILE
 
+#ifdef LAPACKDOUBLE
 typedef double val_type;
+#elif LAPACKCOMPLEX
+typedef double complex val_type;
+#endif
+
+
 typedef double time_type;
+
+val_type Power(val_type v, double exp);
+val_type Sqrt(val_type v);
+val_type Tan(val_type v);
+val_type Cot(val_type v);
+
+
+double Norm(int dim, val_type *v);
 
 
 #ifdef MATLAB
