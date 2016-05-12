@@ -46,6 +46,7 @@ typedef struct
 				    // 2--> it will try to use two more times the same jacobian
                                     // 0 --> allways will get the new jacobian
     int numstepswithsamejac;  // var to be modified at each Newton iteration step
+    int getthebestroot;
     int maxdeltacondfails;
     int approxjacobian;
     int numjac;

@@ -411,6 +411,70 @@ res[dim-1] -= t0-ta;
 
 
 
+int stop_iterations(int iters, int dim, double *deltaptr,int *elementsptr,double *prev_deltaptr, int *ret_valptr,option_struct *optr)
+{
+int stop;
+int i;
+int somehasdecreased;
+double deltanorm;
+
+stop = 0;
+if (iters == 1)  // do not stop, continue iterating
+    {
+    #ifdef LOGFILE
+    fprintf(loga,"first iteration of accurated findroot\n");
+    #endif
+    for (i = 0; i<dim;i++) vectorcp(dim,deltaptr,&(prev_deltaptr[0])); 
+    }
+  else
+    {
+    #ifdef LOGFILE
+    fprintf(loga,"%d iteration: ",iters);
+    #endif
+    deltanorm =Norm(dim,deltaptr);
+    somehasdecreased =0;
+     for (i=0; i<dim; i++)
+	{
+	if (elementsptr[i]) // we have to test the decrement of this element 
+		{
+		if (fabs(deltaptr[i]) < fabs(prev_deltaptr[i])) 
+			{
+			#ifdef LOGFILE
+    			fprintf(loga,"%d hobetu du ",i);
+    			#endif
+			prev_deltaptr[i] = deltaptr[i];
+			somehasdecreased ++;
+			}
+		      else   // this element has reached the its best value 
+			{
+			#ifdef LOGFILE
+    			fprintf(loga,"%d berdin laga eta geratu ",i);
+    			#endif
+			elementsptr[i] = 0; 
+			deltaptr[i]=0.0; // we will not modify this element in this iteration  ????? ANDERri galdetu
+			}
+		}
+	    else // we will not modify this element in this iteration  ????? ANDERri galdetu
+		{
+		#ifdef LOGFILE
+    		fprintf(loga,"%d aurretik geratuta ",i);
+    		#endif
+		deltaptr[i]=0.0; 
+		}
+	}
+    if (somehasdecreased == 0)
+	{  // none of the elements has obtained a better approximation, so WE HAVE TO STOP
+	stop = 1;
+	if (deltanorm < pow(10.0,-optr->prec)) *ret_valptr = 1;
+	    else *ret_valptr = 0;
+	}
+    #ifdef LOGFILE
+    fprintf(loga,"\n");
+    #endif
+    }
+return(stop);
+}
+
 
 int findrootbysnewton(int dim, double *jac0, lapack_type *ipiv, double t, double *bal0, double *bal1, double *delta, double *fnptr, double *ba, double *xa, double ta,
 		      double *preal, long numpreal, int *pint, long numpint, double *factorptr, option_struct *optr)
@@ -420,8 +484,7 @@ int findrootbysnewton(int dim, double *jac0, lapack_type *ipiv, double t, double
  *
  *      Return values:
  *          = 1. Root has been found
- *          = 2. nanfound problem
- *          = 3  could not factorize jacobian or could not solve linear system
+ *          = 2. nanfound problem or could not factorize jacobian or could not solve linear system
  *          = 4  out of memory
  *          = 0. maximal number of iterations reached.
  *               or (normdelta < 0.8*normdelta_prev)
@@ -433,14 +496,17 @@ int findrootbysnewton(int dim, double *jac0, lapack_type *ipiv, double t, double
  *==========================================================================================================*/
 {                
 int i,j;
+int ret_val;
 int nanfound;
 int deltacondfails;
+int stop;
 val_type *newbal;
 //val_type *resvec;
  double normdelta,normdelta0,normdelta_prev;
 double auxnorm;
- int deltacond,acccond;
 int iters;
+int *elementsptr;
+double *prev_deltaptr;
 #ifdef SOLVER_GSL
     /* GSL */
     gsl_matrix_view m; 
@@ -518,16 +584,10 @@ if (optr->maxnumstepswithsamejac == optr->numstepswithsamejac)
     free(newbal);
     return(4);
     }
-#ifdef SOLVER_GSL
+  #ifdef SOLVER_GSL
   irauli(dim,jac0);
-#endif
-  #ifdef LOGFILE
-  fprintf(loga,"Jacobien computed\n");
   #endif
   // The LU decomposition of the jacobian is done only at the beginning
-  #ifdef LOGFILE
-  fprintf(loga,"LU factorization...\n");
-  #endif
   #ifdef LAPACKDOUBLE
     #ifdef SOLVER_GSL
     //gsl_linalg_LU_decomp (gsl_matrix * A, gsl_permutation * p, int * signum)
@@ -539,7 +599,7 @@ if (optr->maxnumstepswithsamejac == optr->numstepswithsamejac)
   zgetrf_( &dimlapack,&dimlapack, jac0, &dimlapack, ipiv,&info);
   #endif
   #ifdef LOGFILE
-  fprintf(loga,"     done! info = %d (should be 0)",info);
+  fprintf(loga,"    LU factorization done! info = %d (should be 0)",info);
   #endif
   }
   else
@@ -552,24 +612,31 @@ if (optr->maxnumstepswithsamejac == optr->numstepswithsamejac)
 if (info !=0)
     {
     free(newbal);
-    return(3);
+    #ifdef SOLVER_GSL
+    /* GSL */
+    gsl_permutation_free (p);
+    #endif
+    return(2);
     }
 #ifdef SOLVER_GSL
 x = gsl_vector_alloc (dim);
 #endif
 iters = 0;
 nanfound = 0;
-deltacond =1;
 deltacondfails=0;
 normdelta = 0;
-acccond = 1;
-while ( (nanfound == 0) &&
-        (info == 0) && 
-        (deltacond == 1) && //(normdelta < 0.8*normdelta_prev) &&
-        (acccond == 1) && //(normdelta/normdelta0 > pow(10.0,-acc)) &&
-        (iters < optr->maxnewtoniter))
+if (optr->getthebestroot == 1)
     {
-#ifdef LOGFILE
+    elementsptr = (int *)malloc(dim*sizeof(int));
+    for (i=0; i<dim; i++) elementsptr[i] = 1;
+    prev_deltaptr = (double *)malloc(dim*sizeof(double));
+    for (i=0; i<dim; i++) prev_deltaptr[i] = 0.0;
+    }
+stop = 0;
+/* MAIN WHILE for NEWTON ITERATIONS */
+while (!stop)
+    {
+    #ifdef LOGFILE
     fprintf(loga,"in the iterations... %d iteration. Matrix:\n",iters);
     printmat(dim,jac0);
     fprintf(loga,"and vector b:\n");
@@ -578,127 +645,140 @@ while ( (nanfound == 0) &&
 		fprintf(loga," %lg,",delta[i]);
 	}
     fprintf(loga,"\n");
-#endif
+    #endif
     iters ++;
-#ifdef LAPACKDOUBLE
+    #ifdef LAPACKDOUBLE
     #ifdef SOLVER_GSL
     gsl_linalg_LU_solve (&m.matrix,  p,  &b.vector, x);   // solve A. x = b
     vectorcp(dim,gsl_vector_ptr(x,0),delta);       // copy x to delta: delta = x (element by element)
     #else
     dgetrs_( &trans, &dimlapack, &nsys, jac0, &lda, ipiv, delta, &ldb, &info ); // Solve: Jac . delta = F(bal0)
     #endif
-#elif LAPACKCOMPLEX
+    #elif LAPACKCOMPLEX
     zgetrs_( &trans, &dimlapack, &nsys, jac0, &lda, ipiv, delta, &ldb, &info ); // Solve: Jac . delta = F(bal0)
-#endif
-    nanfound =vhasnan(dim,delta); 
-    if (nanfound) 
-        {
-        #ifdef LOGFILE
-	fprintf(loga,"NAN found!! %d iteration\n",iters);
-	#ifdef LONGLOG
-        for (i = 0; i< dim; i++) 
-#ifdef LAPACKDOUBLE
-		fprintf(loga," %lg,",delta[i]);
-#elif LAPACKCOMPLEX
-		fprintf(loga," %lg %lg I,",creal(delta[i]),cimag(delta[i]));
-#endif
-        fprintf(loga,"\n");
-        #endif
-        #endif
-	}
-    normdelta_prev = normdelta;
-    normdelta = Norm(dim,delta);   //normdelta  = ||delta||
-#ifdef LOGFILE
-    fprintf(loga,"   ||delta|| = %lg \n",normdelta);
-    #ifdef LONGLOG
-    fprintf(loga,"   delta: ");
-    for (i=0;i<dim;i++) 
-#ifdef LAPACKDOUBLE
-	fprintf(loga," %lg,",delta[i]);
-#elif LAPACKCOMPLEX
-	fprintf(loga," %lg %lg I,",creal(delta[i]),cimag(delta[i]));
-#endif
-    fprintf(loga,"\n");
     #endif
-#endif 
-    if (iters == 1) normdelta0 = normdelta;
-    if (iters > 1) 
-      {
-	if (normdelta > (optr->iterationdecreasefactor * normdelta_prev))  // after second iteration we control 
-                                                // wether the change decrements at each iteration. If do not, we will stop
+    nanfound =vhasnan(dim,delta); 
+    if ((info != 0) || (nanfound!=0)) // if the data stored into delta has some element with nan,or we could not solve the system, we will stop
+	{
+	ret_val = 2;
+	stop = 1;
+	}
+      else  // we have the delta for next root
+	{
+	if (optr->getthebestroot != 1)  // lax stop condition
 	    {
-	        //if (normdelta > normdelta_prev) 
+            normdelta_prev = normdelta;
+            normdelta = Norm(dim,delta);   //normdelta  = ||delta|| 
+            if (iters == 1)  // this is the first iteration
+		{
+		normdelta0 = normdelta;
+		if (normdelta < pow(10.0,-optr->prec)) // if we have a goot initial root we can accept it in the first iteration
+			{
+			stop = 1;
+			ret_val = 1;
+			}
+		}
+              else  // (iters > 1), so, this is at least the second iteration 
+	        {
+		if (normdelta > (optr->iterationdecreasefactor * normdelta_prev))  // after second iteration we control 
+                                                // whether the change decrements at each iteration. If do not, we will stop
+		    {
+	            //if (normdelta > normdelta_prev) 
 			deltacondfails ++;
-                #ifdef LOGFILE
-		fprintf(loga,"    deltacondfails = %d (%lg > %lg)",deltacondfails,normdelta,0.8 * normdelta_prev);
-                #endif 
-		if (deltacondfails > optr->maxdeltacondfails) deltacond = 0;
+	            #ifdef LOGFILE
+		    fprintf(loga,"    deltacondfails = %d (%lg > %lg)",deltacondfails,normdelta,0.8 * normdelta_prev);
+	            #endif 
+		    if (deltacondfails > optr->maxdeltacondfails) 
+			{
+			stop = 1;
+			ret_val= 0;
+			}
+		    }
+		if (iters >= optr->maxnewtoniter) // if we have used too much iterations we have to stop
+			{
+			stop = 1;
+			ret_val= 0;
+			}
+		if (normdelta/normdelta0 < pow(10.0,-optr->acc)) 
+			{
+			stop = 1;
+			ret_val = 1;// if we reach accuracy the delta decrement does not mind nor number of iterations
+			} 
+        	#ifdef LOGFILE
+		fprintf(loga,"    accuracy cond = is %lg < %lg \n",normdelta/normdelta0, pow(10.0,-optr->acc));
+        	#endif 
+		}
 	    }
-	if (normdelta/normdelta0 < pow(10.0,-optr->acc)) {acccond = 0; deltacond=1;} // if we reach accuracy deltacond does not mind
-        #ifdef LOGFILE
-	fprintf(loga,"    accuracy cond = is %lg < %lg \n",normdelta/normdelta0, pow(10.0,-optr->acc));
-        #endif 
-      }
-    vectordiff(dim,newbal,delta, &(bal1[0]));                     // bal1 = newbal - delta
-    vectorcp(dim,bal1,newbal);                                    // newbal = bal1;  newbal is the new approximation of the root
-    if (ba != (double *)0)
-        evaluate_function(dim, newbal, xa, ba, t, ta, &(delta[0]), fnptr, preal, numpreal, pint, numpint);   // delta = F(newbal)   
-      else
-	rest(dim,newbal,t,&(delta[0]), preal, numpreal, pint, numpint);
+	  else  //the stop condition is different, the function stop_iterations will control the condition and it will try to get the best root as posible.
+	    {
+	    stop = stop_iterations(iters, dim, delta, elementsptr,prev_deltaptr, &ret_val, optr);
+	    }
+	vectordiff(dim,newbal,delta, &(bal1[0]));                     // bal1 = newbal - delta
+	vectorcp(dim,bal1,newbal);                                    // newbal = bal1;  newbal is the new approximation of the root
+	if (ba != (double *)0)
+	        evaluate_function(dim, newbal, xa, ba, t, ta, &(delta[0]), fnptr, preal, numpreal, pint, numpint);   // delta = F(newbal)   
+	    else
+		rest(dim,newbal,t,&(delta[0]), preal, numpreal, pint, numpint);
+	}  // end of "we have the delta for next root"
     } //END OF NEWTON ITERATIONS
 
 
 #ifdef LOGFILE
-if (nanfound != 0) fprintf(loga,"end of the newton iterations because NaN on solving equationd by lapack\n");
-if (info != 0) fprintf(loga,"end of the newton iterations by info != 0\n");
-if (deltacond == 0) fprintf (loga,"end newton iterations because difference between approximations do not decrease after %d iterations\n",iters);
-if (iters >= optr->maxnewtoniter) fprintf (loga,"end newton iterations by cause 4 (too many iterations...)\n");
+if (ret_val ==2)
+	{
+	if (nanfound)  fprintf(loga,"end of the newton iterations because NaN on solving equationd by lapack\n");
+          else  fprintf(loga,"end of the newton iterations because the system could not been solved (info != 0)\n");
+	}
+if (ret_val ==0) 
+	{
+	if (iters >= optr->maxnewtoniter) fprintf (loga,"end newton iterations by limit (too many iterations...)\n");
+	    else  fprintf (loga,"end newton iterations because difference between approximations do not decrease after %d iterations\n",iters);
+	}
 #endif
- if ((info == 0) && (nanfound ==0)&& ((acccond == 0) || (normdelta < pow(10.0,-optr->prec))) )
+if (optr->getthebestroot != 1) // lax stop condition
     {
-    info = 1;
-#ifdef LOGFILE
-    fprintf(loga,"new root!\n");
-    #ifdef LONLOG
-      fprintf(loga,"the new root is:\n");
-      for (i = 0;i<dim; i++)
-	#ifdef LAPACKDOUBLE 
-	fprintf(loga,"%lg,  ",bal1[i]); 
-	#endif
-      fprintf(loga,"\n"); 
-    #endif
-#endif
-    #ifdef SOLVER_GSL
-    /* GSL */
-    gsl_permutation_free (p);
-    gsl_vector_free (x);
-    #endif
-    free(newbal);
-    /*******************************************
-    We want to adecuate the stepsize of the continuation path in the following way:
-    The idea is to get the root in each Newton iteraration process using always "iter_opt"
-    number of iterations. We know that if the step is long we will need more iterations
-    and with short steplength less iterations are needed. 
-    with a given length, i.e. l, we have needed "i" iterations to get an accuracy of 10^acc
-    so, we know that (K*l)^i = 10^acc ---> K = (10^(acc/i))/l
+    if ((ret_val != 2) && // if we haven't have problems with the solver
+	(ret_val !=1)) // and we have not reach required accuracy
+	{
+	if (normdelta < pow(10.0,-optr->prec))  // if the solution has aceptable precission we will acept it
+		{
+		ret_val = 1;
+		}
+	}
+    }
+  else // we look for the best root as posible
+    {
+    free(prev_deltaptr);
+    free(elementsptr);
+    } 
+if (ret_val == 1)
+	{
+	/*******************************************
+	We want to adecuate the stepsize of the continuation path in the following way:
+	The idea is to get the root in each Newton iteraration process using always "iter_opt"
+	number of iterations. We know that if the step is long we will need more iterations
+	and with short steplength less iterations are needed. 
+	with a given length, i.e. l, we have needed "i" iterations to get an accuracy of 10^acc
+	so, we know that (K*l)^i = 10^acc ---> K = (10^(acc/i))/l
 
-    but we want this other situation: (K * l_opt)^iter_opt = 10^acc
-    sustituting K and reordering we obtain 
+	but we want this other situation: (K * l_opt)^iter_opt = 10^acc
+	sustituting K and reordering we obtain 
              l_opt = 10^(acc(1/iter_opt - 1/i)) * l
-    so the factor for l to obtain l_opt is  10^(acc(1/iter_opt - 1/i))
-    (take into account that we have the acc value as a positive value)
-    ******************************************** */
-    *factorptr = pow(10,optr->acc*(1.0/(double)iters - 1.0/(double)optr->iter_opt));
-    return (1);
-    }
-  else 
-    {  
-    *factorptr = 0;
-#ifdef LOGFILE
-    fprintf(loga,"it has been considered there is no convergence! \n");
-#endif
-    }
-//listfree(&listofvals);
+	so the factor for l to obtain l_opt is  10^(acc(1/iter_opt - 1/i))
+	(take into account that we have the acc value as a positive value)
+	******************************************** */
+	*factorptr = pow(10,optr->acc*(1.0/(double)iters - 1.0/(double)optr->iter_opt));
+	#ifdef LOGFILE
+	fprintf(loga,"new root!\n");
+	#endif
+	}
+    else
+	{  
+	*factorptr = 0;
+	#ifdef LOGFILE
+	fprintf(loga,"it has been considered there is no convergence! \n");
+	#endif
+	}
 
 #ifdef SOLVER_GSL
 /* GSL */
@@ -706,18 +786,7 @@ gsl_permutation_free (p);
 gsl_vector_free (x);
 #endif
 free(newbal);
-if (nanfound)
-    {
-#ifdef LOGFILE
-    fprintf(loga,"returning nanfound"); fflush(stdout);
-#endif
-    return(2);
-    }
-  else 
-    {
-    if (info) return(3);
-      else return(0);
-    }
+return(ret_val);
 }
 
 
@@ -831,7 +900,7 @@ char filename[30]; /* length of "./arcContinuation.conf" is 20 + end of string =
 
 strcpy(filename,"./arcContinuation.conf");
 optr->approxjacobian = 0;
-
+optr->getthebestroot = 0;
 if (stat(filename,&stata) == 0) 
     {
     fitx = fopen(filename ,"r");
@@ -926,6 +995,8 @@ if (nstep == 1)
 // the minimum of the parabola formed by three points (the central point is near the minimum)
 double minbyinterpolation(double a, double fa, double b, double fb, double c, double fc)
 {
+if (a == b) return(b);
+if (b == c) return(b);
 // x -> (c^2 (fa - fb) + a^2 (fb - fc) + b^2 (-fa + fc))/(2 (c (fa - fb) + a (fb - fc) + b (-fa + fc)))
 return((c*c*(fa - fb) + a*a* (fb - fc) + b*b* (-fa + fc))/(2.0 * (c * (fa - fb) + a * (fb - fc) + b * (-fa + fc))));
 }
@@ -1023,6 +1094,7 @@ opt_vals.maxnewtoniter = 20;   //???????????????
 opt_vals.maxinnersteps = 5;
 opt_vals.prec =8;
 opt_vals.acc = 3;
+opt_vals.getthebestroot = 0;
 opt_vals.iter_opt= 8;
 opt_vals.maxdeltacondfails=2;
 opt_vals.maxnumstepswithsamejac=0; // 0 -> the jacobian is computed for every newton method
@@ -1110,6 +1182,7 @@ hiperplaneortho(dim,var0, b0, &(b1[0]), t0, &(vara[0]), &ta, preal, numpreal, pi
 /* Save the hiperplane equation, to control the closed paths*/
 vectorcp(dim,b1,b00);
 vectorcp(dim,vara,var00);
+vectorcp(dim,b1,b0);
 t00 = ta;
 /* We evaluate the user function to get f_1(x), ...f_n-1(x) and f_n(x) 
  * But we have to move in the curve taking into account the first n-1 functions and the hiperplane
@@ -1136,12 +1209,17 @@ switch (action)
     case 0:  // do nothing!
 	break;
     case 1:
+	#ifdef LOGFILE
+	fprintf(loga,"initial g(x) = %lg\n",fn);
+        #endif
 	newextraCond= fn;    // extraCondNorm = || extra_conditions ||
 	tmin = t0;
 	extraCond = newextraCond;
 	tminprev = tmin;
 	extraCondprev = extraCond;
 	lastwasmin = 1; // after the first step we have to save the time and the extraCondNorm for interpolation (3 points are needed)
+	vectorcp(dim,var0,&(varaux[0])); // the x val that minimizes g(x) is the first one
+	vectorcp(dim,b1,&(bmin[0]));
 	break;
     case 2:
 	break;
@@ -1187,6 +1265,7 @@ for (taux = t0, nstep = 0, opt_vals.numstepswithsamejac=opt_vals.maxnumstepswith
         {
 #ifdef LOGFILE
         fprintf(loga,"arcContinuation: root found (else way) at %.12lg. Next step will advance %.12lg\n",tnew,dtnew);
+	fprintf(loga,"    g(x) = %lg\n",fn);
 #endif
 
 	switch (action) // depending on the action we have to do different things
@@ -1219,14 +1298,20 @@ for (taux = t0, nstep = 0, opt_vals.numstepswithsamejac=opt_vals.maxnumstepswith
 	    case 2:  // we are moving and we want to stop just when  f_n(x) is 0
 		if ((fn*prev_fn)<0) // We have crossed the point that makes f_n(x) = 0
 		    {
+#ifdef LOGFILE
+        fprintf(loga,"It seems that we have passed the point for which g(x) = 0. g(x) = %lg\n",fn);
+#endif
 		    vectorcp(dim,var0,&(varaux[0])); // this has been the point where first time has changed (but with no accurate root)
 		    vectorcp(dim,var1,&(var0[0])); 
-		    opt_vals.acc=opt_vals.acc*4;
+		    opt_vals.getthebestroot=1;
                     opt_vals.numstepswithsamejac= opt_vals.maxnumstepswithsamejac;
                     rootfound = findrootbysnewton(dim, jac0,ipiv, tnew, var0, &(var1[0]),&(res0[0]),&fn, b1, vara, ta, preal,numpreal,pint,numpint, &auxfactor,&opt_vals );
-                    opt_vals.acc=opt_vals.acc/4.;
+                    opt_vals.getthebestroot=0;;
                     if (rootfound != 1)// tryin to get the more accurate root failed. so it is better to get the rest of the less accurate root
 			{  
+#ifdef LOGFILE
+        fprintf(loga,"failed getting a more accurate root\n");
+#endif
 			vectorcp(dim,var0,&(var1[0])); //var1 must be a root
 			evaluate_function(dim, var1, vara, b1, tnew, ta, &(res0[0]),&fn, preal, numpreal, pint, numpint);
 			}
@@ -1257,6 +1342,9 @@ for (taux = t0, nstep = 0, opt_vals.numstepswithsamejac=opt_vals.maxnumstepswith
 		    }
 		  else 
 		    {
+#ifdef LOGFILE
+        fprintf(loga,"we have not crossed the 0\n");
+#endif
 		    prev_fn = fn;   // we save the last f_n(x)
 		    }
 		
@@ -1337,10 +1425,10 @@ switch (action) // depending on the action we have to do different things
 		}
 	      else  // we have moved and we havent stoped because we found a singularity. So it is posible to accurate the root.
 	        {
-	        opt_vals.acc=opt_vals.acc*4;
+	        opt_vals.getthebestroot=1;
 	        opt_vals.numstepswithsamejac= opt_vals.maxnumstepswithsamejac;
 	        rootfound = findrootbysnewton(dim, jac0,ipiv, t1, var0, &(var1[0]),&(res0[0]),&fn,b1,var0,t1,preal,numpreal,pint,numpint, &auxfactor,&opt_vals);
-	        opt_vals.acc = opt_vals.acc/4.;
+	        opt_vals.getthebestroot=0;
 	        /* We call a function which gives the posibility to apply some sort of projection of the solutions after each step.
 	           This is useful when working with homogenous variables, for performing projections onto the unit sphere */
 	       //projection(n,&(bal1[0]),t1,preal, numpreal, pint, numpint);  // <--- Anderrek
@@ -1411,14 +1499,19 @@ switch (action) // depending on the action we have to do different things
 		    //    b.- if the end point is a singularity then the minimum is in a previous point. 
 		    // So, in both cases we can accurate the root.
 	        {
-		opt_vals.acc=opt_vals.acc*4;
+		#ifdef LOGFILE
+	        fprintf(loga, "we are going to accurate the root: t prev = %lg, min = %lg, post = %lg, interpolated = %lg\nthe x value that minimizes g(x) is:\n", tminprev,tmin,tminpost,tmininterpolated);
+		for (i=0; i< dim; i++) fprintf(loga, " %lg, ",varaux[i]);
+		fprintf(loga, "\n");
+		#endif
+		opt_vals.getthebestroot=1;
 		opt_vals.numstepswithsamejac = opt_vals.maxnumstepswithsamejac;   // we need a new jacobian!! 
 		if ((tmin-tminprev)*(tmininterpolated -tmin) < 0)  // tmininterpolated is in the oposite direction of the direction given by bmin
 			for (i=0; i< dim; i++) bmin[i] = -bmin[i];
 		rootfound = findrootbysnewton(dim, jac0,ipiv, tmininterpolated, varaux, &(var1[0]),&(res0[0]),&fn,bmin,varaux,tmininterpolated,preal,numpreal,pint,numpint, &auxfactor,&opt_vals);
 		if ((tmin-tminprev)*(tmininterpolated -tmin) < 0)  // to recover the direction we have used to advance in the curve
 			for (i=0; i< dim; i++) bmin[i] = -bmin[i];	
-		opt_vals.acc = opt_vals.acc/4.;
+		opt_vals.getthebestroot=0;
 		if (rootfound == 1) 
 			{
 			// var1 has the vector to be returned
@@ -1473,19 +1566,19 @@ switch (action) // depending on the action we have to do different things
 	    {
 	    //Lortu interpolazio lineala erabiliz t_root eta acc handiarekin beretzat lortu x_root
 	    troot = t0 - prev_fn *(t1-t0)/(fn-prev_fn);
-	    opt_vals.acc=opt_vals.acc*4;
+	    opt_vals.getthebestroot=1;
             opt_vals.numstepswithsamejac= opt_vals.maxnumstepswithsamejac;
             rootfound = findrootbysnewton(dim, jac0,ipiv, troot, var0, &(var1[0]),&(res0[0]),&fn, b1, vara, ta, preal,numpreal,pint,numpint, &auxfactor,&opt_vals );
-            opt_vals.acc=opt_vals.acc/4.;
+            opt_vals.getthebestroot=0;
 	    if (rootfound) 
-		{//ondoren saiatu f_n(x) ere betetzen duen findroot egiten eta lortzen badu hori itzuli. bestela aurrekoa.
+		{//ondoren saiatu f_n(x) ere betetzen duen findroot egiten eta lortzen badu hori itzuli. bestela aurrekoa. Deia egin b1 ordez 0 jarrita
 		vectorcp(dim,var1, &(var0[0]));
-		opt_vals.acc=opt_vals.acc*4;
+		opt_vals.getthebestroot=1;
         	opt_vals.numstepswithsamejac= opt_vals.maxnumstepswithsamejac;
 		// we will try to get the root of the dim equations, without the hiperplane equation as last eqution.
 		// to do it we call to findroot with parameters 0 as the pointers to the vector of previous values
         	rootfound = findrootbysnewton(dim, jac0,ipiv,troot, var0, &(var1[0]),&(res0[0]),&fn, (double *)0, (double *)0, ta, preal,numpreal,pint,numpint, &auxfactor,&opt_vals);
-        	opt_vals.acc=opt_vals.acc/4.;
+        	opt_vals.getthebestroot=0;
 		if (rootfound)
 		    {  // we have the root for all f_i(x) in the vector var1
 			// the hiperplane coefficients are in vector b1
