@@ -17,7 +17,7 @@ SetArcContinuation[rest_List, t_Symbol, vars_List, opts___Rule]:=
 Module[{CCDir,ostype,auxrules,exampleargs, DDrulesall,DDrules0,DDrules,
         parsrules,auxvarsrules, varsrules,dauxvarsrules,allrules,denbora, 
       indaux,ind1,ind2,makefile,(*resta,restb,*)targetdir,fileconf,varsymbollist,makecmd},
-(*denbora = SessionTime[];*)
+denbora = SessionTime[];
 Clear[DDrule,hvarsQ,simplrulesfcn,preal,aux,daux,var,cvar,auxvars,dauxvars,
       resaux,auxaux,dauxaux,jacaux,dir];
 CCDir = ArcContinuationDir/.{opts}/.Options[SetArcContinuation];
@@ -135,6 +135,7 @@ dir = Directory[];
 SetDirectory[targetdir];
 Splice[CCDir <>"/Mathematica/user_fcns.mc","user_fcns.c",FormatType->OutputForm];
 
+Print["Splice egin dugu"];
 
 fileconf = "./arcContinuation.conf";
 If[!FileExistsQ[fileconf], Run[ "cp " <> CCDir <> "/arcContinuation.conf" <> " ./"]];
