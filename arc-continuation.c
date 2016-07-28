@@ -1154,6 +1154,9 @@ double tmin,tminprev,tminpost,tmininterpolated;
 double extraCond, newextraCond, lastextraCond, extraCondprev, extraCondpost;
 double *varaux;
 double *bmin;
+int minAtInit;
+double tLocalmin;
+double extraCondLocalMin;
 /************* variables used when action is 2 (look for the absolute root)   */
 int surechange; 
 double prev_fn;
@@ -1281,15 +1284,18 @@ evaluate_function(dim, var0, vara, b1, t0, ta, &(res0[0]),&fn, preal, numpreal, 
 
 switch (action)
     {
-    case 0:  // do nothing!
+    case 0:  // We only want to follow the arc --> do nothing!
 	break;
-    case 1:
+    case 1:  // We want to find the minimum value of the extra equation, and if the minimum is at the begining, then we are interested on local minimums
 	#ifdef LOGFILE
 	fprintf(loga,"initial g(x) = %lg\n",fn);
         #endif
+	minAtInit = 1;
 	newextraCond= fn;    // extraCondNorm = || extra_conditions ||
 	tmin = t0;
+	tLocalmin = t0;
 	extraCond = newextraCond;
+	//extraCondLocalMin = newextraCond;
 	tminprev = tmin;
 	extraCondprev = extraCond;
 	lastwasmin = 1; // after the first step we have to save the time and the extraCondNorm for interpolation (3 points are needed)
@@ -1360,6 +1366,7 @@ for (taux = t0, nstep = 0, opt_vals.numstepswithsamejac=opt_vals.maxnumstepswith
 			}
 		if (newextraCond < extraCond)     // this point has the minimun. So we have to save it.
 			{
+			minAtInit = 0;
 			tminprev = taux;    // taux is the time for the previous root
 			extraCondprev = lastextraCond;   // we had saved the extraCond of the previous root
 			tmin = tnew;
@@ -1373,8 +1380,25 @@ for (taux = t0, nstep = 0, opt_vals.numstepswithsamejac=opt_vals.maxnumstepswith
 		    else
 			{
 			#ifdef LOGFILE
-  			  fprintf(loga,"\n\n ez dago aldaketarik!!! (new) = %lf \n",newextraCond);
+  			  fprintf(loga,"\n\n ez dago aldaketarik minimo globalean!!! (new) = %lf \n",newextraCond);
 			#endif
+			if (minAtInit) // The minimum is at the begining, so we are interested on local minimums
+				{
+				if (newextraCond < lastextraCond) // we are in a zone of the arc where the extra Condition is decreassing
+				    {
+				    if (tLocalmin == init) // is the first decrassing zone. so we have to initialize extraCondLocalMin
+					extraCondLocalMin = lastextraCond;
+				    if (newextraCond < extraCondLocalMin)  // we are approaching to the local minimum whose extra condition is minimum
+					{  // we will treat it as the point with minimum extra condition (but we will not change the value of tmin) we will save tLocalmin
+					tminprev = taux;    // taux is the time for the previous root
+					extraCondprev = lastextraCond;   // we had saved the extraCond of the previous root
+					tLocalmin = tnew;
+					lastwasmin = 1; 
+					vectorcp(dim,var1,&(varaux[0]));
+					extraCondLocalMin = newextraCond;
+					}
+				    }
+				}
 			}
 
 		break;
@@ -1562,7 +1586,15 @@ switch (action) // depending on the action we have to do different things
 	*taptr = t0;
 	*tbptr = t1;
 	break;
-    case 1: 
+    case 1:  	// Info = 10 -> minimun value at init and there are not local minimums (ascending extra-condition value)
+		// Info = 11 -> minimun value between init and end
+		// Info = 12 -> minimun value at end of the arc
+		// Info = 13 -> minimun value at init but there are local minimums for extra-condition value. we return the minimum of them
+		// Info = -11 -> minimun value between init and the end of the covered arc, but we finished because there is asingularity before end.
+		// Info = -12 -> minimun value is at end, and there is a a singularity, where we finish the continuation.
+		// Info = -13 -> minimun value is at init but there are local minimums. We return the minimum of them and inform that there is asingularity before end.
+		// Info = -14 -> minimun value is at init but the local minimum is at a singularity, where we finish the continuation.
+
 	if (lastwasmin) // we have to save the minimum, the previous and the next to get the minimum by polynomial interpolation
 	    {	// the last root is the one with minimum norm for extra conditions, so we have not saved the point after it.
 	    tminpost = tnew;  // the point after the minimum will be the same as the minimum (we repeat it --> linear interpolation!)
@@ -1585,13 +1617,21 @@ switch (action) // depending on the action we have to do different things
 
 	// x -> (c^2 (fa - fb) + a^2 (fb - fc) + b^2 (-fa + fc))/(2 (c (fa - fb) + a (fb - fc) + b (-fa + fc)))
 
-	tmininterpolated = minbyinterpolation(tminprev,extraCondprev, tmin, extraCond,tminpost,extraCondpost);
+	
+	if (!minAtInit || (tLocalmin == init))  // in this case we hava a point with minumun in some part of the arc but not at t0
+						// or the arc has increassing extra condition (with no local minimum)
+		{
+		extraCondLocalMin = extraCond;
+		tLocalmin = tmin;
+		}
+	tmininterpolated = minbyinterpolation(tminprev,extraCondprev, tLocalmin, extraCondLocalMin,tminpost,extraCondpost);
 	//with this new tmin and the approximation of the root we recalculate the root at the new tmininterpolated with higher accuracy.
 	if (taux != init) // if we have been able to advance in t, then we will accurate the new root
 	    {
 	    if ((tmininterpolated == tnew)&&(average_stepsize <= opt_vals.min_av_stepsize)) 
 		{	// the minimum is reached at the end but the stepsize required is too little. we will not acurate the root.
-		*infoptr = -12;
+		if (minAtInit) *infoptr = -14;
+		    else *infoptr = -12;
 		*taptr = tmininterpolated;
 		*tbptr = tnew;
 		vectorcp(dim,bmin, &(b1[0]));
@@ -1631,7 +1671,11 @@ switch (action) // depending on the action we have to do different things
 		        }
 		vectorcp(dim,bmin,&(b1[0]));  // the coefficients of the hiperplane for the point that minimizes the equation.
 		*tbptr = taux;
-		if (average_stepsize <= opt_vals.min_av_stepsize) *infoptr = -11; //We have stoped in a singularity but the minimum is a good point
+		if (average_stepsize <= opt_vals.min_av_stepsize) //We have stoped in a singularity but the minimum is a good point
+			{
+			if (minAtInit) *infoptr = -13; // the minimum is at init, but there are local minimums, and we return the minimum of them 
+			    else *infoptr = -11;       // minimun value between init and the end of the covered arc, but we finished because there is a singularity before end.
+			}
 		    else  // we have advanced in the curve and we have not stoped in a singularity
 			{
 			if (is_closed)
@@ -1641,9 +1685,16 @@ switch (action) // depending on the action we have to do different things
 				}
 			    else
 				{
-				if (tmininterpolated == t0) *infoptr = 10;
-				    else if (tmininterpolated == taux) *infoptr = 12;
+				if (minAtInit)
+					{
+					if (tmininterpolated == t0) *infoptr = 10;
+					     else *infoptr = 13;
+					}
+				    else
+					{
+					 if (tmininterpolated == taux) *infoptr = 12;
 					    else *infoptr = 11;
+					}
 				}
 			}
 		}
