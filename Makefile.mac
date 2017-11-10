@@ -1,0 +1,52 @@
+# Portions of this makefile require the use of GNU make.
+# see http://www.gnu.org/software/make for more information.
+
+#VERSION=9.0
+# MLINKDIR =/Applications/Mathematica.app/SystemFiles/Links/MathLink/DeveloperKit/CompilerAdditions/
+MLINKDIR =/Applications/Mathematica.app/Contents/SystemFiles/Links/MathLink/DeveloperKit/MacOSX-x86-64/CompilerAdditions
+#Sys = MacOSX-x86-64
+CADDSDIR = ${MLINKDIR}
+EXTRA_CFLAGS= -O2
+
+
+INCDIR = ${CADDSDIR} -I./  -I${MHDIR}
+LIBDIR = ${CADDSDIR}
+
+MPREP = ${CADDSDIR}/mprep
+RM = rm
+
+CC = /usr/bin/clang
+CXX = /usr/bin/clang++
+
+
+
+BINARIES = mathArcContinuation
+
+all : $(BINARIES)
+
+
+
+mathArcContinuation :  mathArcContinuation.o mathArcContinuationtm.o arc-continuation.o user_fcns.o
+	${CC} ${EXTRA_CFLAGS} -I${INCDIR}   ${MHDIR}/mathArcContinuation.o user_fcns.o ${MHDIR}/arc-continuation.o ${MHDIR}/mathArcContinuationtm.o   -L${LIBDIR} -lMLi4 -lstdc++ -framework Foundation -framework Accelerate -o $@
+
+
+
+mathArcContinuation.o: ${MHDIR}/mathArcContinuation.c 
+	${CC} -c -I${INCDIR} ${MHDIR}/mathArcContinuation.c -o ${MHDIR}/mathArcContinuation.o
+
+
+arc-continuation.o : ${MHDIR}/arc-continuation.c
+	${CC} ${EXTRA_CFLAGS} -I${INCDIR}  -c ${MHDIR}/arc-continuation.c -o ${MHDIR}/arc-continuation.o
+
+mathArcContinuationtm.o : ${MHDIR}/mathArcContinuationtm.c
+	${CC} ${EXTRA_CFLAGS} -I${INCDIR}  -c ${MHDIR}/mathArcContinuationtm.c -o ${MHDIR}/mathArcContinuationtm.o
+
+user_fcns.o : user_fcns.c
+	${CC} ${EXTRA_CFLAGS} -I${INCDIR}  -c  user_fcns.c  -o $@
+
+${MHDIR}/mathArcContinuationtm.c : ${MHDIR}/mathArcContinuation.tm
+	${MPREP} ${MHDIR}/mathArcContinuation.tm -o ${MHDIR}/mathArcContinuationtm.c
+
+
+clean :
+	@ ${RM} -rf *.o ${MHDIR}/*.o ${MHDIR}/*tm.c $(BINARIES) 
