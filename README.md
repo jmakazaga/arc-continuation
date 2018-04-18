@@ -1,7 +1,7 @@
 # arc-continuation
 Given n-1 equations f_1(x), ... f_{n-1}(x), where x \in R^n (yes, x has 1 more element than number of equations) and 
 given x_0 for which f_i(x_0) = 0, there is a continuous curve for x values for which f_i(x) = 0. 
-To move on the curve we use continuation mehods based on Newton Iterations that requires not only the functions but also the jacobian of the functions.
+To move on the curve we use continuation methods based on Newton Iterations that requires not only the functions but also the jacobian of the functions.
 The function and its jacobian must be provided in a file in C code (or at least as objcet file) and the object file must be linked to the main process.
 We will move in this curve starting at x_0. This movement can be made in two directions, we define an orthogonal hyperplane of the form
 b(x-x_0) = s -s_0, 
@@ -18,7 +18,7 @@ The function has as input: (X_0, b_0, s_0, s_1, action) where:
 .- the vector b_0 is simply a vector that will help us stablishing the direction of the movement (it can be one component with value 1 and the rest with value 0). It will be used to get the orthogonal b_h that makes b_h(x-x_0) = s - s_0.
 .- s_0 is the starting s value
 .- s_1 is the final s value. These two values indicate the amount of movement on the curve.
-.- action is the value taht tells the action to be done at each step: action = 0 if you just want to move from s_0 to s_1. action = 1 if you are looking for the x that makes f_n(x) be the minimun in the covered path. action = 2 if you are looking for the x value that makes f_n(x) =0. 
+.- action is the value that tells the action to be done at each step: action = 0 if you just want to move from s_0 to s_1. action = 1 if you are looking for the x that makes f_n(x) be the minimun in the covered path. action = 2 if you are looking for the x value that makes f_n(x) =0. 
 
 The output is: (x_e, b_e, s_a, s_e, info) where these values depend on the action defined as input:
 If action was 0 (go from s_0 to s_1) then info can be:
@@ -36,7 +36,7 @@ If action was 1 (go from s_0 to s_1 and give me the point that makes f_n(x) mini
     ---
     .- info = -20. It was not posible to move on the curve. return values are x_0, b_0, s_a=s_0, s_b = s_0
     ---
-    .- info = -10. The process has been able to move on the curve but it has stoped because it could not continue (a singularity in the path at s_s) and the minimun value has been reached at the starting point. Reurn values correspond to the singularity point: x_e = x_s, b_e = b_s, s_a = s_0 s_e = s_s. 
+    .- info = -10. The process has been able to move on the curve but it has stoped because it could not continue (a singularity in the path at s_s) and the minimun value has been reached at the starting point. Return values correspond to the singularity point: x_e = x_s, b_e = b_s, s_a = s_0 s_e = s_s. 
     .- info = -11. The process has been able to move on the curve but it has stoped because it could not continue (a singularity in the path at s_s) and the minimun value has been reached at some point between s_0 and the singularity point s_s. Returns the min value: x_e = x_min, b_e = b_min, s_a = s_min, s_e = s_s. 
     .- info = -12. The process has been able to move on the curve but it has stoped because it could not continue (a singularity in the path at s_s) and the minimun value has been reached at the stoping point s_s. Returns the singularity point: x_e = x_s, b_e = b_s, s_a = s_0 s_e = s_s. 
 if action was 2 ( go from s_0 to s_1 but stop when f_n(x) = 0)

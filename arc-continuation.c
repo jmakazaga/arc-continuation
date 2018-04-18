@@ -70,6 +70,9 @@ void jacobian(int dim, val_type *varvals, time_type t, val_type *jac, double *pr
 void rest(int dim, val_type *varvals, time_type t, val_type *res, double *preal, long prelem, int *pint, long pielem);
 void projection(int dim,val_type *varvals, time_type t, double *preal, long prelem, int *pint, long pielem);
 
+extern int get_advancingjacobian(int dim, double *bal0, double *xa, double *ba, double t, double ta, double *jac0, double *preal, long numpreal, int *pint, long numpint,option_struct *optr);
+extern int Newjacobian(int dim, val_type *varvals, time_type t, val_type *jac, double *preal, long prelem, int *pint, long pielem,option_struct *optr);
+
 //This functions evaluates the Jacobian and solves the linear function: J b1 = (0,0,0...0,1)^T
 // the last equation of F(x) shoud be the equation of the hiperplane:
 //             \Sum_i b0_i (x_i - X_i^0) = t
@@ -119,8 +122,9 @@ val_type * jac0;
 #endif
       #ifdef SOLVER_GSL
       gsl_permutation_free (p);
-      #endif
+      #else
       free(ipiv);
+      #endif
       return;
       }
 
@@ -145,8 +149,9 @@ val_type * jac0;
     {
     #ifdef SOLVER_GSL
     gsl_permutation_free (p);
-    #endif
+    #else
     free(ipiv);
+    #endif
     free(jac0);
     return;
     }
@@ -171,9 +176,10 @@ val_type * jac0;
 #endif
       #ifdef SOLVER_GSL
       gsl_permutation_free (p);
+      #else
+      free(ipiv);
       #endif
       free(jac0);
-      free(ipiv);
       return;
       }
   #endif
@@ -194,9 +200,10 @@ val_type * jac0;
   #ifdef SOLVER_GSL
   gsl_permutation_free (p);
   gsl_vector_free (x);
+  #else
+  free(ipiv);
   #endif
   free(jac0);
-  free(ipiv);
 }
 
 
@@ -1005,7 +1012,10 @@ if (stat(filename,&stata) == 0)
 					  if (strcmp(word,"num_steps_for_stepsize_control")==0)
 					      res=fscanf(fitx,"%d%*[^\n]\n",&(optr->num_steps_for_stepsize_control));
 					    else
-					      res=fscanf(fitx,"%*[^\n]\n"); /* nothing of interest in the line, so read until EOL */
+					      if(strcmp(word,"totalmaxnumsteps")==0)
+						  res=fscanf(fitx,"%d%*[^\n]\n",&(optr->max_steps));
+					        else
+					            res=fscanf(fitx,"%*[^\n]\n"); /* nothing of interest in the line, so read until EOL */
 	            } // else Inner
            	 } // else Newton
                } //else  not comment
@@ -1146,7 +1156,7 @@ int num_steps_for_stepsize_control;
 double stepsize;  // The user can set the initial stepsize. Starting from t0 the process goes to t1
 		  // and the initial stepsize can be set in the .conf file
 double iterationdecreasefactor;  // the minimum decrease of delta at each Newton iteration
-int max_steps; 
+int max_steps;  // by default 400 but configurable in .conf file with "totalmaxnumsteps" word
 */
 /************* variables used when action is 1 (look for the minimum)   */
 int lastwasmin; 
@@ -1306,7 +1316,6 @@ switch (action)
 	prev_fn = 0.0;
 	break;
     }
-
 for (taux = t0, nstep = 0, opt_vals.numstepswithsamejac=opt_vals.maxnumstepswithsamejac,average_stepsize= ((dt>0)?dt:-dt),is_closed = 0,surechange=0;
      ((dt>0)?(taux-t1 < 0):(t1-taux < 0)) && (nstep < 10*opt_vals.max_steps) && (average_stepsize > opt_vals.min_av_stepsize)&&!is_closed && !surechange;
      nstep ++,dt=dtnew,compute_average_stepsize(&average_stepsize,nstep,taux,tnew, &opt_vals),taux = tnew
@@ -1510,6 +1519,7 @@ for (taux = t0, nstep = 0, opt_vals.numstepswithsamejac=opt_vals.maxnumstepswith
               }
 	    } //end of surechange
         }  // end of if ( else way: rootfound)
+
 #ifdef LOGFILE
     fprintf(loga," STEP %d .... rootfound = %d ...\n",nstep,rootfound);
 #endif
@@ -1537,7 +1547,12 @@ if ((nstep >= 10*opt_vals.max_steps) || (average_stepsize <= opt_vals.min_av_ste
     }
 switch (action) // depending on the action we have to do different things
     {
-    case 0:  // we want just move on the curve	
+    case 0:  // we want just move on the curve		
+	     // info = -2 -> we could not start advancing (singularity or lack of convergence)
+	     // info = -1 -> we finished because there is a singularity before end (or we could not converge).
+             // info = 2  -> we have returned to the init root (closed path)
+             // info = 3  -> we reached to maximun number of steps
+             // info = 1  -> we reached the end of the arc
 	if (taux != init) // if we have been able to advance in t, then we will accurate the new root
 	    {
 	    if (average_stepsize <= opt_vals.min_av_stepsize) // the stepsize required is too little. we will not acurate the root.
@@ -1709,6 +1724,14 @@ switch (action) // depending on the action we have to do different things
 	    }
 	break;
     case 2:  // we are moving and we want to stop just when  f_n(x) is 0
+
+                // Info = 111 -> 0 value found at taux (returned in tbptr)
+		// Info = 112 -> 0 value found at taux (returned in tbptr) but there is some convergence problem
+		// Info = 20 -> closed arc with no 0 value
+		// Info = 30 -> we stopped because maximun number of steps were given. tbptr has the end of the covered path.
+		// Info = 40 -> we stopped because stepsize is too little (convergence problem). tbptr has the end of the covered path.
+		// Info = -20 -> we could not advance (no convergence or singularity) so no 0 value found 
+
 	/* if we got a shurechange we have the values tprev and tafter where:
 	tprev is the last value of t for which the sign of extra conditions were unchanged and 
 	tafter is the t for which some sign has changed. We want also return the root at tprev
@@ -1779,7 +1802,15 @@ switch (action) // depending on the action we have to do different things
 		if (is_closed)
 		    *infoptr = 20;
 		  else
-		    *infoptr = 10;
+                    {
+                    if (nstep >= 10*opt_vals.max_steps) // We have stoped because max_steps was reached, not because t = tend. 
+			    *infoptr = 30;
+                       else
+                           if (average_stepsize <= opt_vals.min_av_stepsize) // We have stoped because stepsize is too little, not because t = tend. 
+			        *infoptr = 40;
+                             else
+		                *infoptr = 10;
+                    }
 		}
 	      else 
 		{     // we have to return the initial vector
