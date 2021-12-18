@@ -1383,13 +1383,13 @@ for (taux = t0, nstep = 0, opt_vals.numstepswithsamejac=opt_vals.maxnumstepswith
 			vectorcp(dim,var1,&(varaux[0]));
 			extraCond = newextraCond;
 			#ifdef LOGFILE
-  			  fprintf(loga,"\n\n ALDAKETA!!! Min changed at tmin (new) = %lf with value = %lf\n",tmin,extraCond);
+  			  fprintf(loga,"\n\n NEW MIN!!! Min changed at tmin (new) = %lf with value = %lf\n",tmin,extraCond);
 			#endif
 			}
 		    else
 			{
 			#ifdef LOGFILE
-  			  fprintf(loga,"\n\n ez dago aldaketarik minimo globalean!!! (new) = %lf \n",newextraCond);
+  			  fprintf(loga,"\n\n Same min!!! min = %lf (this root's value) = %lf \n",extraCond,newextraCond);
 			#endif
 			if (minAtInit) // The minimum is at the begining, so we are interested on local minimums
 				{
